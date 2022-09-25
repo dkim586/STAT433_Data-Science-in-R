@@ -1,0 +1,119 @@
+---
+title: "STAT433: Homework 1"
+author: "Doy Kim"
+date: "September 27, 2022"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(nycflights13)
+
+```
+
+# Prob 1
+
+How many flights have a missing dep_time? What other variables are missing? What might these rows represent?
+
+## Missing dep_time
+
+```{r P1a}
+df = flights
+
+(missing_dep_time = df %>%
+  filter(is.na(dep_time) == TRUE) %>%
+  summarize(nn = n()))
+```
+
+> `r missing_dep_time` flights have a missing dep_time.
+
+## Other variables with missing values
+
+```{r}
+colSums(is.na(df))
+  
+```
+
+> Beside `dep_time`, the following variables contain missing values: `dep_dely`, `arr_time`, `arr_delay`, `tailnum`, `air_time`
+
+## Interpretation
+
+```{r}
+df.missing = df %>%
+  filter(is.na(dep_time) == TRUE,
+         is.na(dep_delay) == TRUE,
+         is.na(arr_time) == TRUE,
+         is.na(arr_delay) == TRUE,
+         is.na(air_time) == TRUE)
+
+head(df.missing, 10)
+
+
+```
+
+> Note that I ignored missing values in `tailnum` since it is an aircraft identifier, not a characteristic of a specific flight. 
+ Having simultaneous missing values in `dep_time`, `dep_delay`, `arr_time`, `arr_delay`, and `air_time` is likely to mean that the filghts were scheduled, but ended up not taking place.
+
+# Prob 2
+
+Currently `dep_time` and `sched_dep_time` are convenient to look at, but hard to compute with because they’re not really continuous numbers. Convert them to a more convenient representation of number of minutes since midnight.
+
+```{r}
+df_new_time = df %>%
+  select(dep_time, sched_dep_time, hour) %>%
+  mutate(dep_hour = floor(dep_time/100),
+         new_dep_time = dep_hour*60 + (dep_time - dep_hour*100),
+         sched_hour = hour,
+         new_sched_time = sched_hour*60 + (sched_dep_time - sched_hour*100)) %>%
+  select(dep_time, new_dep_time, sched_dep_time, new_sched_time)
+
+head(df_new_time, 10)
+
+```
+
+# Prob 3
+
+Look at the number of canceled flights per day. Is there a pattern? Is the proportion of canceled flights related to the average delay? Use multiple dyplr operations, all on one line, concluding with ggplot(aes(x= ,y=)) + geom_point()
+
+## Is there a pattern?
+
+```{R}
+# canceled
+(
+  df.canceled = df %>% 
+  group_by(day) %>% 
+  summarize(canceled = sum(is.na(dep_time) == TRUE),
+            total = n(),
+            p = canceled/total,
+            m_delay = mean(dep_delay + arr_delay, na.rm = TRUE))
+ )
+
+# Graph
+df.canceled %>%
+  ggplot(aes(x = day, y = p)) +
+  geom_bar(stat = "identity")
+
+# Pattern? Random?
+df.chi = df.canceled %>%
+  mutate(non_canceled = total - canceled) %>%
+  select(canceled, non_canceled)
+
+chisq.test(df.chi)
+```
+
+> The bar graph indicates that around filght cancellation is the most frequent aroung the 10th of a month. The chi-squared test's result also suggest that the cancellation pattern across different days is not random. However, a more thorough investigation is required to specify the characteristics of the pattern.
+
+## Is the proportion of canceled flights related to the average delay?
+
+```{r}
+lm_out = lm(data = df.canceled, m_delay ~ p)
+summary(lm_out)
+
+df.canceled %>%
+  ggplot(aes(x = p, y = m_delay)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+
+>The regression results and the graph suggest that the average delay in a day (`m_delay`) and the proportion of canceled flights in a day (`p`) are significantly associated.
